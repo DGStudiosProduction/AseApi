@@ -155,31 +155,65 @@ namespace API::DllCompat
 		"UObjectBaseUtility.GetPathName(const UObject*,FString&)const",
 	};
 
+	// where the argument list of an overload key "Name(Args)" starts, or null for a plain name.
+	// parentheses inside template arguments ("TFunction<void __cdecl(int)>"), the name
+	// "operator()" and a leading "(" are part of a plain name
+	inline const char* OverloadArguments(const char* name)
+	{
+		int depth = 0;
+		for (const char* c = name; *c != '\0'; ++c)
+		{
+			if (*c == '<')
+				++depth;
+			else if (*c == '>' && depth > 0)
+				--depth;
+			else if (*c == '(' && depth == 0 && c != name)
+			{
+				if (c - name >= 8 && strncmp(c - 8, "operator", 8) == 0 && c[1] == ')')
+				{
+					++c;
+					continue;
+				}
+
+				return c;
+			}
+		}
+
+		return nullptr;
+	}
+
+	// overload keys may be written with different spacing
+	inline std::string WithoutSpaces(const char* text)
+	{
+		std::string result;
+		for (const char* c = text; *c != '\0'; ++c)
+		{
+			if (*c != ' ')
+				result += *c;
+		}
+
+		return result;
+	}
+
 	// the name the old version.dll knows this symbol by, false if it cannot be looked up there
 	inline bool OldDllName(const char* name, std::string* out)
 	{
 		if (name == nullptr)
 			return false;
 
-		const char* paren = strchr(name, '(');
-		if (paren == nullptr)
+		const char* arguments = OverloadArguments(name);
+		if (arguments == nullptr)
 		{
 			out->assign(name);
 			return true;
 		}
 
-		std::string compact;
-		for (const char* c = name; *c != '\0'; ++c)
-		{
-			if (*c != ' ')
-				compact += *c;
-		}
-
+		const std::string key = WithoutSpaces(name);
 		for (const char* known : old_dll_overloads)
 		{
-			if (compact == known)
+			if (key == WithoutSpaces(known))
 			{
-				out->assign(name, static_cast<size_t>(paren - name));
+				out->assign(name, static_cast<size_t>(arguments - name));
 				return true;
 			}
 		}
