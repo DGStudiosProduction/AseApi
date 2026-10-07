@@ -87,7 +87,20 @@ namespace API
 		 * Their callbacks will not be called. Requests of an unloaded plugin are cancelled automatically.
 		 * \return Number of cancelled requests
 		 */
+#ifdef ARK_EXPORTS
 		ARK_API int CancelPendingRequests();
+#else
+		int CancelPendingRequests()
+		{
+			using Fn = int (*)(Requests*);
+			if (const auto current = DllCompat::Get<Fn>(DllCompat::CancelPendingRequestsExport))
+				return current(this);
+
+			// an older version.dll cannot cancel: the callbacks still run
+			DllCompat::ReportOnce("not supported, requests not cancelled", "Requests::CancelPendingRequests");
+			return 0;
+		}
+#endif
 	private:
 		friend void CancelModuleRequests(HMODULE module);
 

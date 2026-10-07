@@ -962,9 +962,18 @@ namespace ArkApi
 
 		void RunHiddenCommand(AShooterPlayerController* _this, FString* Command)
 		{
-			if (_this != nullptr && Command != nullptr)
+			if (_this == nullptr || Command == nullptr)
+				return;
+
+			// an older version.dll has no slot for RunHiddenCommand_Internal, and could not hide the command
+			if (API::DllCompat::IsCurrentDll())
 			{
 				RunHiddenCommand_Internal(_this, Command);
+			}
+			else
+			{
+				FString result;
+				_this->ConsoleCommand(&result, Command, false);
 			}
 		}
 	private:

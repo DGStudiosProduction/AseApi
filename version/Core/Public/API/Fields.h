@@ -9,11 +9,8 @@
 
 #include "Base.h"
 
-namespace API
-{
-	// logs once per module and name, at warn level, that the module uses something deprecated or missing
-	ARK_API void LogDeprecatedUse(const char* api_name, HMODULE caller);
-}
+// API::LogDeprecatedUse logs once per module and name, at warn level, that the module uses
+// something deprecated or missing. Declared in Base.h.
 
 // cached name lookups, constexpr so a local static needs no init guard
 class NativeFunction

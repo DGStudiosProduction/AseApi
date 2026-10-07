@@ -78,7 +78,18 @@ namespace API
 		 * \param id Id returned by DelayExecuteWithId or RecurringExecuteWithId
 		 * \return true if the timer was found
 		 */
+#ifdef ARK_EXPORTS
 		ARK_API bool CancelTimer(uint64_t id);
+#else
+		bool CancelTimer(uint64_t id)
+		{
+			using Fn = bool (*)(Timer*, uint64_t);
+			if (const auto current = DllCompat::Get<Fn>(DllCompat::CancelTimerExport))
+				return current(this, id);
+
+			return DllCompat::CancelTimer(id);
+		}
+#endif
 
 	private:
 		friend void CancelModuleTimers(HMODULE module);
@@ -119,9 +130,43 @@ namespace API
 		ARK_API void RecurringExecuteInternal(const std::function<void()>& callback, int execution_interval,
 		                                      int execution_counter, bool async);
 
+#ifdef ARK_EXPORTS
 		ARK_API uint64_t DelayExecuteWithIdInternal(const std::function<void()>& callback, int delay_seconds);
 		ARK_API uint64_t RecurringExecuteWithIdInternal(const std::function<void()>& callback, int execution_interval,
 		                                                int execution_counter, bool async);
+#else
+		// an older version.dll has no timer ids: the id lives here and a cancelled timer skips its callback
+		uint64_t DelayExecuteWithIdInternal(const std::function<void()>& callback, int delay_seconds)
+		{
+			using Fn = uint64_t (*)(Timer*, const std::function<void()>&, int);
+			if (const auto current = DllCompat::Get<Fn>(DllCompat::DelayExecuteWithIdExport))
+				return current(this, callback, delay_seconds);
+
+			auto timer = DllCompat::AddTimer(1);
+			DelayExecuteInternal([callback, timer]
+			{
+				if (DllCompat::FireTimer(*timer))
+					callback();
+			}, delay_seconds);
+			return timer->id;
+		}
+
+		uint64_t RecurringExecuteWithIdInternal(const std::function<void()>& callback, int execution_interval,
+		                                        int execution_counter, bool async)
+		{
+			using Fn = uint64_t (*)(Timer*, const std::function<void()>&, int, int, bool);
+			if (const auto current = DllCompat::Get<Fn>(DllCompat::RecurringExecuteWithIdExport))
+				return current(this, callback, execution_interval, execution_counter, async);
+
+			auto timer = DllCompat::AddTimer(execution_counter);
+			RecurringExecuteInternal([callback, timer]
+			{
+				if (DllCompat::FireTimer(*timer))
+					callback();
+			}, execution_interval, execution_counter, async);
+			return timer->id;
+		}
+#endif
 
 		uint64_t AddTimer(const std::function<void()>& callback, int delay_seconds, int execution_interval,
 		                  int execution_counter, bool exec_once, bool async, void* return_address);

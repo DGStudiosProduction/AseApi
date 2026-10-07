@@ -4,7 +4,32 @@
 #include "Logger/spdlog/spdlog.h"
 
 ARK_API std::vector<spdlog::sink_ptr>& APIENTRY GetLogSinks();
+
+#ifdef ARK_EXPORTS
 ARK_API spdlog::level::level_enum APIENTRY GetLogFlushLevel();
+#else
+// not exported by an older version.dll, see DllCompat.h
+inline spdlog::level::level_enum APIENTRY GetLogFlushLevel()
+{
+	using Fn = spdlog::level::level_enum (*)();
+	if (const auto current = API::DllCompat::Get<Fn>(API::DllCompat::GetLogFlushLevelExport))
+		return current();
+
+	// what the old version.dll flushed on
+	return spdlog::level::info;
+}
+
+namespace API::DllCompat
+{
+	inline void ReportToArkLog(const char* message)
+	{
+		auto& sinks = GetLogSinks();
+		spdlog::logger("ArkApi", begin(sinks), end(sinks)).warn("{}", message);
+	}
+
+	inline const bool report_to_ark_log = (reporter.store(&ReportToArkLog, std::memory_order_release), true);
+} // namespace API::DllCompat
+#endif
 
 class Log
 {

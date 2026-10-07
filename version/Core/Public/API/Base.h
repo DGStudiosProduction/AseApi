@@ -692,6 +692,8 @@ ARK_API BitField GetBitField(const void* base, const std::string& name);
 ARK_API BitField GetBitField(LPVOID base, const std::string& name);
 
 // lookups without a std::string, unknown names are logged once
+// silent probes: false if the name is unknown. the offset is the field offset, or the rva for functions and globals
+#ifdef ARK_EXPORTS
 ARK_API DWORD64 GetAddress(const void* base, const char* name);
 ARK_API LPVOID GetAddress(const char* name);
 
@@ -700,9 +702,17 @@ ARK_API LPVOID GetDataAddress(const char* name);
 ARK_API BitField GetBitField(const void* base, const char* name);
 ARK_API BitField GetBitField(LPVOID base, const char* name);
 
-// silent probes: false if the name is unknown. the offset is the field offset, or the rva for functions and globals
 ARK_API bool FindNativeOffset(const char* name, intptr_t* offset);
 ARK_API bool FindNativeBitField(const char* name, BitField* bit_field);
+
+namespace API
+{
+	ARK_API void LogDeprecatedUse(const char* api_name, HMODULE caller);
+}
+#endif
+
+// plugins reach the exports above through DllCompat.h, so they also load on an older version.dll
+#include "DllCompat.h"
 
 inline bool HasNativeSymbol(const char* name)
 {
@@ -710,11 +720,6 @@ inline bool HasNativeSymbol(const char* name)
 }
 
 extern "C" IMAGE_DOS_HEADER __ImageBase;
-
-namespace API
-{
-	ARK_API void LogDeprecatedUse(const char* api_name, HMODULE caller);
-}
 
 // logs the plugin using a deprecated declaration
 inline void ReportDeprecatedApiUse(const char* api_name)
