@@ -97,7 +97,7 @@ namespace API
 				return current(this);
 
 			// an older version.dll cannot cancel: the callbacks still run
-			DllCompat::ReportOnce("not supported, requests not cancelled", "Requests::CancelPendingRequests");
+			DllCompat::ReportOnce("old version.dll: not supported, requests not cancelled", "Requests::CancelPendingRequests");
 			return 0;
 		}
 #endif

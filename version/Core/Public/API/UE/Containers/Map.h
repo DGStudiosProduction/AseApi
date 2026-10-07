@@ -2,8 +2,10 @@
 
 #pragma once
 
+#include <cstring>
 #include <stdexcept>
 
+#include "../../Base.h"
 #include "../BasicTypes.h"
 #include "../Templates/UnrealTypeTraits.h"
 #include "../Templates/UnrealTemplate.h"
@@ -986,8 +988,36 @@ public:
 		}
 	}
 
-	FORCEINLINE       ValueType& operator[](KeyConstPointerType Key) { return this->FindOrAdd(Key); }
-	FORCEINLINE const ValueType& operator[](KeyConstPointerType Key) const { return this->FindChecked(Key); }
+	// a lookup, as in UE4: it never inserts. Most maps a plugin sees belong to the engine, and an insert
+	// can grow the map, freeing the storage that the engine or the caller may still be iterating or
+	// referencing. Use FindOrAdd or Add to insert. A missing key is reported once and gives a zeroed
+	// value, never an exception, which must not unwind through engine code
+	FORCEINLINE ValueType& operator[](KeyConstPointerType Key)
+	{
+		ValueType* Value = this->Find(Key);
+		return Value != nullptr ? *Value : MissingValue();
+	}
+
+	FORCEINLINE const ValueType& operator[](KeyConstPointerType Key) const
+	{
+		const ValueType* Value = this->Find(Key);
+		return Value != nullptr ? *Value : MissingValue();
+	}
+
+private:
+	// zeroed storage, not a constructed object: a zeroed FString, TArray, pointer or number is a valid
+	// empty value, and needs no init guard. A write through it is discarded on the next miss
+	static __declspec(noinline) ValueType& MissingValue()
+	{
+		API::DllCompat::ReportOnce("TMap operator[]: key not in the map, nothing inserted (use Find or FindOrAdd)",
+		                           "TMap");
+
+		alignas(ValueType) static unsigned char storage[sizeof(ValueType)];
+		memset(storage, 0, sizeof(storage));
+		return *reinterpret_cast<ValueType*>(storage);
+	}
+
+public:
 };
 
 

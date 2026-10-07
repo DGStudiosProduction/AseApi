@@ -21,6 +21,40 @@
 
 namespace API::DllCompat
 {
+	// set by Logger.h so a header can report through the plugin's log
+	inline std::atomic<void (*)(const char*)> reporter{nullptr};
+
+	// a message is reported once per plugin, tracked by hash without a lock
+	inline std::atomic<uint64_t> reported[64]{};
+
+	inline void ReportOnce(const char* what, const char* name)
+	{
+		uint64_t hash = 14695981039346656037ULL;
+		for (const char* c = what; *c != '\0'; ++c)
+			hash = (hash ^ static_cast<unsigned char>(*c)) * 1099511628211ULL;
+		for (const char* c = name; *c != '\0'; ++c)
+			hash = (hash ^ static_cast<unsigned char>(*c)) * 1099511628211ULL;
+		hash |= 1;
+
+		// a full table keeps reporting rather than going quiet
+		for (auto& slot : reported)
+		{
+			uint64_t seen = slot.load(std::memory_order_relaxed);
+			if (seen == 0 && slot.compare_exchange_strong(seen, hash))
+				break;
+
+			if (seen == hash)
+				return;
+		}
+
+		const std::string message = std::string("[ArkApi] ") + what + " '" + name + "'";
+		const auto report = reporter.load(std::memory_order_acquire);
+		if (report != nullptr)
+			report(message.c_str());
+		else
+			OutputDebugStringA(message.c_str());
+	}
+
 #ifdef ARK_EXPORTS
 	constexpr bool IsCurrentDll()
 	{
@@ -110,40 +144,6 @@ namespace API::DllCompat
 		return IsCurrentDll() ? reinterpret_cast<Fn>(exports[which].load(std::memory_order_relaxed)) : nullptr;
 	}
 
-	// set by Logger.h so the old version.dll path can report through the ArkApi log
-	inline std::atomic<void (*)(const char*)> reporter{nullptr};
-
-	// a name is reported once per plugin, tracked by hash without a lock
-	inline std::atomic<uint64_t> reported[64]{};
-
-	inline void ReportOnce(const char* what, const char* name)
-	{
-		uint64_t hash = 14695981039346656037ULL;
-		for (const char* c = what; *c != '\0'; ++c)
-			hash = (hash ^ static_cast<unsigned char>(*c)) * 1099511628211ULL;
-		for (const char* c = name; *c != '\0'; ++c)
-			hash = (hash ^ static_cast<unsigned char>(*c)) * 1099511628211ULL;
-		hash |= 1;
-
-		// a full table keeps reporting rather than going quiet
-		for (auto& slot : reported)
-		{
-			uint64_t seen = slot.load(std::memory_order_relaxed);
-			if (seen == 0 && slot.compare_exchange_strong(seen, hash))
-				break;
-
-			if (seen == hash)
-				return;
-		}
-
-		const std::string message = std::string("[ArkApi] old version.dll: ") + what + " '" + name + "'";
-		const auto report = reporter.load(std::memory_order_acquire);
-		if (report != nullptr)
-			report(message.c_str());
-		else
-			OutputDebugStringA(message.c_str());
-	}
-
 	// overloads the old version.dll resolves correctly by their plain name. it binds a plain name to
 	// the last overload in the pdb, and for these that is the one named (or one with the same calling
 	// convention and result), checked against ShooterGameServer.pdb
@@ -219,7 +219,7 @@ namespace API::DllCompat
 		}
 
 		// the old version.dll has one address per plain name, and it may be another overload
-		ReportOnce("overload it cannot tell apart, call skipped", name);
+		ReportOnce("old version.dll: overload it cannot tell apart, call skipped", name);
 		return false;
 	}
 

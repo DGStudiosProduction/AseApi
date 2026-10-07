@@ -18,17 +18,6 @@ inline spdlog::level::level_enum APIENTRY GetLogFlushLevel()
 	// what the old version.dll flushed on
 	return spdlog::level::info;
 }
-
-namespace API::DllCompat
-{
-	inline void ReportToArkLog(const char* message)
-	{
-		auto& sinks = GetLogSinks();
-		spdlog::logger("ArkApi", begin(sinks), end(sinks)).warn("{}", message);
-	}
-
-	inline const bool report_to_ark_log = (reporter.store(&ReportToArkLog, std::memory_order_release), true);
-} // namespace API::DllCompat
 #endif
 
 class Log
@@ -66,3 +55,21 @@ private:
 
 	std::shared_ptr<spdlog::logger> logger_;
 };
+
+namespace API::DllCompat
+{
+	// reports from headers go to the plugin's own log once it has one, so the line names the plugin
+	inline void ReportToLog(const char* message)
+	{
+		if (const auto& plugin_log = Log::GetLog())
+		{
+			plugin_log->warn("{}", message);
+			return;
+		}
+
+		auto& sinks = GetLogSinks();
+		spdlog::logger("ArkApi", begin(sinks), end(sinks)).warn("{}", message);
+	}
+
+	inline const bool report_to_log = (reporter.store(&ReportToLog, std::memory_order_release), true);
+} // namespace API::DllCompat
